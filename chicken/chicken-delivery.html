@@ -1,0 +1,321 @@
+<!doctype html>
+<html lang="ko">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>치킨 배달 영수증 스탑워치</title>
+<style>
+  :root {
+    --bg: #c0392b; --paper: #fffdf6; --ink: #222; --muted: #6b6b6b; --line: #c9c4b8;
+    --red: #c0392b; --green: #1e8449; --yellow: #ffd23f;
+  }
+  * { box-sizing: border-box; }
+  body {
+    margin: 0; min-height: 100vh; background: var(--bg);
+    background-image: repeating-linear-gradient(45deg, rgba(255,255,255,.06) 0 20px, transparent 20px 40px);
+    background-attachment: fixed;
+    font-family: "Segoe UI", "Malgun Gothic", "Apple SD Gothic Neo", sans-serif; color: var(--ink);
+    display: flex; flex-direction: column; align-items: center; padding: 28px 16px 40px;
+  }
+  .num { font-family: Consolas, "SF Mono", Menlo, monospace; font-variant-numeric: tabular-nums; }
+
+  .receipt {
+    width: 100%; max-width: 380px; background: var(--paper); padding: 26px 22px 36px; position: relative;
+    filter: drop-shadow(0 12px 22px rgba(0,0,0,.3));
+    -webkit-mask: conic-gradient(from 135deg at top, #0000, #000 1deg 89deg, #0000 90deg) top / 18px 10px repeat-x,
+                  linear-gradient(#000 0 0) center / 100% calc(100% - 20px) no-repeat,
+                  conic-gradient(from -45deg at bottom, #0000, #000 1deg 89deg, #0000 90deg) bottom / 18px 10px repeat-x;
+            mask: conic-gradient(from 135deg at top, #0000, #000 1deg 89deg, #0000 90deg) top / 18px 10px repeat-x,
+                  linear-gradient(#000 0 0) center / 100% calc(100% - 20px) no-repeat,
+                  conic-gradient(from -45deg at bottom, #0000, #000 1deg 89deg, #0000 90deg) bottom / 18px 10px repeat-x;
+  }
+  .shop { text-align: center; font-size: 24px; font-weight: 900; letter-spacing: 2px; }
+  .shop small { display: block; font-size: 12px; font-weight: 500; color: var(--muted); letter-spacing: 0; margin-top: 4px; }
+  .meta { display: grid; grid-template-columns: auto 1fr; gap: 2px 12px; font-size: 12.5px; color: #444; margin-top: 12px; }
+  .meta dd { margin: 0; text-align: right; }
+  .meta dt { color: var(--muted); }
+  hr { border: none; border-top: 2px dashed var(--line); margin: 14px 0; }
+  .sec { font-size: 12px; font-weight: 800; color: var(--muted); letter-spacing: 1px; margin-bottom: 6px; }
+
+  table { width: 100%; border-collapse: collapse; font-size: 14px; }
+  th { font-size: 11.5px; color: var(--muted); font-weight: 700; text-align: right; padding: 0 0 4px; }
+  th:first-child, td:first-child { text-align: left; }
+  td { padding: 5px 0; vertical-align: top; text-align: right; }
+  td.q { width: 34px; } td.p { width: 82px; }
+  td .opt { display: block; font-size: 11.5px; color: var(--muted); }
+  .sum td { padding: 2px 0; font-size: 13px; color: #444; }
+  .total td { font-size: 17px; font-weight: 900; padding-top: 8px; color: var(--ink); }
+
+  /* 스탑워치 */
+  .display { text-align: center; font-size: clamp(44px, 14vw, 56px); font-weight: 800; letter-spacing: -1px; margin: 2px 0; white-space: nowrap; }
+  .display .ms { font-size: .55em; color: #999; }
+  .now { text-align: center; font-size: 14px; font-weight: 700; color: var(--red); min-height: 20px; }
+
+  .track { position: relative; display: flex; justify-content: space-between; margin: 18px 0 4px; }
+  .track .rail, .track .fill { position: absolute; left: 22px; top: 21px; height: 4px; border-radius: 2px; }
+  .track .rail { right: 22px; background: #e6e1d6; }
+  .track .fill { width: 0; background: var(--red); transition: width .3s; }
+  .step { position: relative; z-index: 1; width: 44px; display: flex; flex-direction: column; align-items: center; font-size: 11.5px; color: #999; font-weight: 600; }
+  .step i { font-style: normal; width: 44px; height: 44px; border-radius: 50%; display: grid; place-items: center; font-size: 20px;
+            background: #f1ede3; border: 3px solid #e6e1d6; filter: grayscale(1); opacity: .65; margin-bottom: 4px; transition: all .25s; }
+  .step.done i { background: #ffe9e4; border-color: var(--red); filter: none; opacity: 1; }
+  .step.done { color: var(--red); }
+  .step.now i { background: var(--yellow); border-color: var(--red); filter: none; opacity: 1; animation: pulse 1s ease-in-out infinite; }
+  .step.now { color: var(--red); font-weight: 900; }
+  body:not(.running) .step.now i { animation: none; }
+  @keyframes pulse { 50% { transform: scale(1.12); } }
+  .scooter { position: absolute; top: -8px; font-size: 22px; transform: translateX(-50%) scaleX(-1); opacity: 0; transition: opacity .3s; }
+  .delivering .scooter { opacity: 1; }
+  body.running .delivering .scooter { animation: bump .35s ease-in-out infinite; }
+  @keyframes bump { 50% { margin-top: -3px; } }
+
+  .log td { font-size: 13.5px; }
+  .log .pending td { color: #b5b0a5; }
+  .log .active td { color: var(--red); font-weight: 700; }
+  .log td.t { width: 86px; } .log td.c { width: 86px; color: var(--muted); }
+
+  .arrived { display: none; text-align: center; background: var(--yellow); border-radius: 12px; padding: 12px; margin-top: 12px; font-weight: 900; font-size: 17px; }
+  .arrived small { display: block; font-size: 12.5px; font-weight: 600; margin-top: 4px; }
+  .is-arrived .arrived { display: block; animation: drop .5s cubic-bezier(.3,1.5,.5,1); }
+  @keyframes drop { from { transform: translateY(-20px) scale(.9); opacity: 0; } }
+
+  .barcode { height: 38px; margin-top: 16px;
+             background: repeating-linear-gradient(90deg, #222 0 2px, transparent 2px 4px, #222 4px 7px, transparent 7px 9px, #222 9px 10px, transparent 10px 13px); }
+  .thanks { text-align: center; font-size: 12px; color: var(--muted); margin-top: 8px; }
+
+  .buttons { display: flex; gap: 10px; margin-top: 22px; position: sticky; bottom: 14px; z-index: 5; }
+  button { height: 52px; border: none; border-radius: 26px; font-family: inherit; font-size: 16px; font-weight: 800; cursor: pointer;
+           transition: transform .08s, filter .15s; }
+  button:hover:not(:disabled) { filter: brightness(1.06); }
+  button:active:not(:disabled) { transform: translateY(2px); }
+  button:disabled { opacity: .5; cursor: default; }
+  button:focus-visible { outline: 3px solid #fff; outline-offset: 3px; }
+  #mainBtn { width: 170px; background: var(--yellow); color: #6b1a12; box-shadow: 0 5px 0 #b8961a; }
+  #pauseBtn, #resetBtn { width: 96px; background: #8e2a1f; color: #fff3d6; box-shadow: 0 5px 0 #5e1a13; }
+  .hint { color: #fff; font-size: 12.5px; margin-top: 14px; text-align: center; line-height: 1.7; }
+  .hint kbd { font-family: inherit; font-size: 11px; border: 1px solid #fff; border-radius: 4px; padding: 0 5px; }
+  .sr-only { position: absolute; width: 1px; height: 1px; overflow: hidden; clip: rect(0 0 0 0); white-space: nowrap; }
+
+  @media (max-width: 400px) {
+    .receipt { padding: 22px 16px 32px; }
+    #mainBtn { width: 150px; } #pauseBtn, #resetBtn { width: 84px; }
+    .step { font-size: 11px; }
+  }
+  @media (prefers-reduced-motion: reduce) {
+    *, *::before, *::after { animation: none !important; transition: none !important; }
+  }
+</style>
+</head>
+<body>
+  <main class="receipt" id="receipt">
+    <div class="shop">🐔 꼬꼬바삭 치킨<small>바삭함은 시간 싸움! 조리부터 도착까지 재 드립니다</small></div>
+    <dl class="meta">
+      <dt>주문번호</dt><dd class="num" id="orderNo"></dd>
+      <dt>주문일시</dt><dd class="num" id="orderAt"></dd>
+      <dt>배달주소</dt><dd>행복시 바삭구 닭다리로 12, 101동</dd>
+      <dt>요청사항</dt><dd>문 앞에 두고 벨 눌러 주세요</dd>
+    </dl>
+    <hr>
+    <div class="sec">주문 내역</div>
+    <table>
+      <thead><tr><th>메뉴</th><th>수량</th><th>금액</th></tr></thead>
+      <tbody id="menu"></tbody>
+    </table>
+    <hr>
+    <table>
+      <tbody>
+        <tr class="sum"><td>주문 금액</td><td class="num" id="subtotal"></td></tr>
+        <tr class="sum"><td>배달팁</td><td class="num" id="tip"></td></tr>
+        <tr class="sum"><td>쿠폰 할인 (첫 주문)</td><td class="num" id="coupon"></td></tr>
+        <tr class="total"><td>결제 금액</td><td class="num" id="total"></td></tr>
+      </tbody>
+    </table>
+    <hr>
+    <div class="sec">배달 스탑워치</div>
+    <div class="display num" id="display" role="timer" aria-label="총 경과 시간">00:00<span class="ms">.00</span></div>
+    <div class="now" id="nowText">조리 시작을 눌러 주세요</div>
+    <div class="track" id="track" aria-hidden="true">
+      <div class="rail"></div><div class="fill" id="fill"></div>
+      <span class="scooter" id="scooter">🛵</span>
+    </div>
+    <hr>
+    <div class="sec">단계별 기록</div>
+    <table class="log">
+      <thead><tr><th>단계</th><th>소요</th><th>누적</th></tr></thead>
+      <tbody id="log"></tbody>
+    </table>
+    <div class="arrived" role="status">띵동! 치킨이 도착했어요 🍗<small id="arrivedText"></small></div>
+    <div class="barcode" aria-hidden="true"></div>
+    <div class="thanks">맛있게 드시고 리뷰 남겨 주세요 🙏</div>
+  </main>
+
+  <div class="buttons">
+    <button id="resetBtn" disabled>초기화</button>
+    <button id="pauseBtn" disabled>일시정지</button>
+    <button id="mainBtn">🍳 조리 시작</button>
+  </div>
+  <p class="hint"><kbd>Space</kbd> 다음 단계 · <kbd>P</kbd> 일시정지/계속 · <kbd>R</kbd> 초기화</p>
+  <div class="sr-only" aria-live="polite" id="live"></div>
+
+<script>
+  /* ---------- 메뉴 (임의 설정) ---------- */
+  const MENU = [
+    { name: '황금바삭 후라이드',   opt: '뼈 · 바삭하게',      price: 18000, qty: 1 },
+    { name: '매콤달콤 양념치킨',   opt: '순살 변경 +2,000',   price: 21000, qty: 1 },
+    { name: '마늘간장 반반치킨',   opt: '후라이드 + 간장',    price: 19500, qty: 1 },
+    { name: '모짜렐라 치즈볼',     opt: '5개',                price: 4500,  qty: 2 },
+    { name: '케이준 감자튀김',     opt: '',                   price: 3500,  qty: 1 },
+    { name: '콜라 1.25L',          opt: '',                   price: 2500,  qty: 1 },
+    { name: '치킨무 추가',         opt: '',                   price: 500,   qty: 2 },
+  ];
+  const TIP = 3000, COUPON = -2000;
+  const won = n => (n < 0 ? '-' : '') + Math.abs(n).toLocaleString('ko-KR') + '원';
+
+  const menuEl = document.getElementById('menu');
+  let subtotal = 0;
+  for (const m of MENU) {
+    const line = m.price * m.qty;
+    subtotal += line;
+    const tr = document.createElement('tr');
+    tr.innerHTML = `<td></td><td class="q num">${m.qty}</td><td class="p num">${won(line)}</td>`;
+    tr.firstChild.textContent = m.name;
+    if (m.opt) { const o = document.createElement('span'); o.className = 'opt'; o.textContent = m.opt; tr.firstChild.appendChild(o); }
+    menuEl.appendChild(tr);
+  }
+  document.getElementById('subtotal').textContent = won(subtotal);
+  document.getElementById('tip').textContent = won(TIP);
+  document.getElementById('coupon').textContent = won(COUPON);
+  document.getElementById('total').textContent = won(subtotal + TIP + COUPON);
+  const d = new Date(), p2 = n => String(n).padStart(2, '0');
+  document.getElementById('orderNo').textContent = `B${p2(d.getMonth() + 1)}${p2(d.getDate())}-${String(Math.floor(Math.random() * 9000) + 1000)}`;
+  document.getElementById('orderAt').textContent = `${d.getFullYear()}.${p2(d.getMonth() + 1)}.${p2(d.getDate())} ${p2(d.getHours())}:${p2(d.getMinutes())}`;
+
+  /* ---------- 단계 ---------- */
+  // 각 단계: 아이콘, 이름, 진행 중 문구, 이 단계를 끝내는 버튼 이름
+  const STAGES = [
+    { icon: '🍳', name: '조리',   doing: '🔥 기름에 풍덩! 바삭하게 튀기는 중', next: '📦 조리 완료' },
+    { icon: '📦', name: '포장',   doing: '📦 소스 챙기고 꼼꼼히 포장하는 중',   next: '🛵 배달 출발' },
+    { icon: '🛵', name: '배달',   doing: '🛵 라이더가 달려가는 중',             next: '🏠 도착 완료' },
+    { icon: '🏠', name: '도착',   doing: '' },
+  ];
+  const track = document.getElementById('track'), fill = document.getElementById('fill'), scooter = document.getElementById('scooter');
+  STAGES.forEach(s => {
+    const el = document.createElement('div');
+    el.className = 'step';
+    el.innerHTML = `<i>${s.icon}</i>${s.name}`;
+    track.appendChild(el);
+  });
+  const stepEls = [...track.querySelectorAll('.step')];
+  const logEl = document.getElementById('log');
+
+  /* ---------- 스탑워치 상태 ---------- */
+  const display = document.getElementById('display'), nowText = document.getElementById('nowText');
+  const mainBtn = document.getElementById('mainBtn'), pauseBtn = document.getElementById('pauseBtn'), resetBtn = document.getElementById('resetBtn');
+  const receipt = document.getElementById('receipt'), live = document.getElementById('live');
+  let stage = -1;          // -1: 시작 전, 0~2: 진행 중 단계, 3: 도착
+  let running = false, startTime = 0, elapsed = 0, stageStart = 0, splits = [], raf = null, lastHTML = '';
+
+  const now = () => running ? elapsed + performance.now() - startTime : elapsed;
+  function fmt(ms, html) {
+    const cs = Math.floor(ms / 10) % 100, s = Math.floor(ms / 1000) % 60, m = Math.floor(ms / 60000) % 60, h = Math.floor(ms / 3600000);
+    const main = (h ? h + ':' : '') + p2(m) + ':' + p2(s);
+    return html ? `${main}<span class="ms">.${p2(cs)}</span>` : `${main}.${p2(cs)}`;
+  }
+  const say = ms => { const s = Math.floor(ms / 1000); return (s >= 60 ? `${Math.floor(s / 60)}분 ` : '') + `${s % 60}초`; };
+  const announce = t => { live.textContent = ''; setTimeout(() => live.textContent = t, 30); };
+
+  function renderLog() {
+    logEl.textContent = '';
+    let cum = 0;
+    STAGES.slice(0, 3).forEach((s, i) => {
+      const tr = document.createElement('tr');
+      let t = '--:--.--', c = '--:--.--';
+      if (i < splits.length) { cum += splits[i]; t = fmt(splits[i]); c = fmt(cum); }
+      else if (i === stage) { tr.className = 'active'; t = fmt(now() - stageStart); c = fmt(now()); }
+      else tr.className = 'pending';
+      tr.innerHTML = `<td>${s.icon} ${s.name}</td><td class="t num">${t}</td><td class="c num">${c}</td>`;
+      logEl.appendChild(tr);
+    });
+  }
+
+  function paint() {
+    const t = now();
+    const html = fmt(t, true);
+    if (html !== lastHTML) { display.innerHTML = html; lastHTML = html; }
+    const active = logEl.querySelector('tr.active');
+    if (active) { active.children[1].textContent = fmt(t - stageStart); active.children[2].textContent = fmt(t); }
+    // 배달 단계에서는 스쿠터가 2→3 구간을 천천히 이동 (5분 기준으로 점점 느려짐)
+    const W = track.clientWidth - 44, seg = W / 3;
+    let pos = Math.max(0, stage) * seg;
+    if (stage === 2) { const q = 1 - Math.exp(-(t - stageStart) / 120000); pos += seg * q * 0.9; scooter.style.left = (22 + pos) + 'px'; }
+    if (stage >= 3) pos = W;
+    fill.style.width = pos + 'px';
+  }
+  function loop() { paint(); raf = requestAnimationFrame(loop); }
+
+  function renderStage() {
+    stepEls.forEach((el, i) => { el.classList.toggle('done', i < stage || stage === 3); el.classList.toggle('now', i === stage && stage < 3); });
+    track.classList.toggle('delivering', stage === 2);
+    receipt.classList.toggle('is-arrived', stage === 3);
+    if (stage === -1) { mainBtn.textContent = '🍳 조리 시작'; nowText.textContent = '조리 시작을 눌러 주세요'; }
+    else if (stage < 3) { mainBtn.textContent = STAGES[stage].next; nowText.textContent = running ? STAGES[stage].doing : '⏸ 잠시 멈춤'; }
+    else { mainBtn.textContent = '✅ 배달 완료'; nowText.textContent = '맛있게 드세요!'; }
+    mainBtn.disabled = stage === 3 || (!running && stage >= 0);
+    pauseBtn.disabled = stage < 0 || stage === 3;
+    pauseBtn.textContent = running || stage < 0 || stage === 3 ? '일시정지' : '계속';
+    resetBtn.disabled = stage < 0;
+    document.body.classList.toggle('running', running);
+    renderLog();
+  }
+
+  function start() {
+    startTime = performance.now(); running = true; loop();
+  }
+  function stop() {
+    elapsed += performance.now() - startTime; running = false; cancelAnimationFrame(raf); paint();
+  }
+
+  function next() {
+    if (stage === -1) { stage = 0; stageStart = 0; start(); renderStage(); announce('조리 시작'); return; }
+    if (!running || stage >= 3) return;
+    const t = now();
+    splits.push(t - stageStart);
+    announce(`${STAGES[stage].name} ${say(t - stageStart)} 걸림`);
+    stageStart = t;
+    stage++;
+    if (stage === 3) {
+      stop();
+      document.getElementById('arrivedText').textContent = `조리부터 도착까지 총 ${say(elapsed)} 걸렸어요`;
+      announce(`도착! 총 ${say(elapsed)}`);
+    }
+    renderStage();
+    paint();
+  }
+  function pause() {
+    if (stage < 0 || stage === 3) return;
+    if (running) { stop(); announce('일시정지'); } else { start(); announce('계속'); }
+    renderStage();
+  }
+  function reset() {
+    if (running) stop();
+    stage = -1; elapsed = 0; stageStart = 0; splits = [];
+    renderStage(); paint();
+    announce('초기화');
+    mainBtn.focus();
+  }
+
+  mainBtn.addEventListener('click', next);
+  pauseBtn.addEventListener('click', pause);
+  resetBtn.addEventListener('click', reset);
+  document.addEventListener('keydown', e => {
+    if (e.repeat || e.ctrlKey || e.metaKey || e.altKey) return;
+    if (e.code === 'Space') { e.preventDefault(); next(); }
+    else if (e.code === 'KeyP') pause();
+    else if (e.code === 'KeyR' && stage >= 0) reset();
+  });
+  window.addEventListener('resize', paint);
+
+  renderStage(); paint();
+</script>
+</body>
+</html>
